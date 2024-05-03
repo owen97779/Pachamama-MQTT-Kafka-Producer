@@ -7,7 +7,7 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	modifiedlogger "github.com/owen97779/Pachamama-BlueIris-MQTT-Producer/internal/logger"
+	modifiedlogger "github.com/owen97779/Pachamama-MQTT-Kafka-Producer/internal/logger"
 )
 
 type MQTTClient struct {

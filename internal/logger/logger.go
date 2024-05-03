@@ -3,7 +3,7 @@ package modifiedlogger
 import (
 	"log"
 
-	"github.com/owen97779/Pachamama-BlueIris-MQTT-Producer/pkg/logger"
+	"github.com/owen97779/Pachamama-MQTT-Kafka-Producer/pkg/logger"
 )
 
 type MyLogger struct {

@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"time"
 
-	blueirismqtt "github.com/owen97779/Pachamama-BlueIris-MQTT-Producer/internal/blueiris-mqtt"
-	modifiedlogger "github.com/owen97779/Pachamama-BlueIris-MQTT-Producer/internal/logger"
-	"github.com/owen97779/Pachamama-BlueIris-MQTT-Producer/pkg/kafka"
+	blueirismqtt "github.com/owen97779/Pachamama-MQTT-Kafka-Producer/internal/blueiris-mqtt"
+	modifiedlogger "github.com/owen97779/Pachamama-MQTT-Kafka-Producer/internal/logger"
+	"github.com/owen97779/Pachamama-MQTT-Kafka-Producer/pkg/kafka"
 )
 
 func main() {
