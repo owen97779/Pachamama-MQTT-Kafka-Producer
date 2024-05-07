@@ -37,7 +37,7 @@ This microservice acts as a bridge between our BlueIris CCTV system and our even
 3. Create Docker container
     ```
     docker run -d --name "mqtt-kafka-producer" "mqtt-kafka-producer-img"
-
+    ```
 ## Dependencies
 
 - https://github.com/eclipse/paho.mqtt.golang

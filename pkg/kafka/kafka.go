@@ -1,115 +1,130 @@
+// Kafka package used by Pachamama Group, uses Segmentio Kafka.
 package kafka
 
 import (
-	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/segmentio/kafka-go"
 )
 
-type KafkaConfig struct {
-	Broker    string
-	Port      string
-	Topic     string
-	Partition int
-	MaxBytes  int
-	Timeout   time.Duration
-	Logger    kafka.Logger
-}
-
 type KafkaProducer struct {
-	KafkaConfig
-	writer *kafka.Writer
+	Timeout time.Duration
+	writer  *kafka.Writer
 }
 
 type KafkaConsumer struct {
-	KafkaConfig
-	reader *kafka.Reader
+	Timeout time.Duration
+	reader  *kafka.Reader
 }
 
-func NewProducer(ctx context.Context, broker, port, topic string, maxB, part int, dur time.Duration,
-	logger kafka.Logger) *KafkaProducer {
-	config := KafkaConfig{
-		Broker: broker, Port: port, Topic: topic, Partition: part, MaxBytes: maxB, Timeout: dur,
-		Logger: logger,
-	}
+type Message struct {
+	Topic     string    `json:"topic"`
+	Key       string    `json:"key"`
+	Value     string    `json:"value"`
+	Timestamp time.Time `json:"timestamp"`
+}
 
+/*
+Context should have a timeout which will signal the time to read or write a message
+*/
+func NewProducer(ctx context.Context, broker, port, topic string, logger kafka.Logger, timeout time.Duration) *KafkaProducer {
 	w := &kafka.Writer{
-		Addr:                   kafka.TCP(config.Broker + ":" + config.Port),
-		Topic:                  config.Topic,
+		Addr:                   kafka.TCP(broker + ":" + port),
+		Topic:                  topic,
 		AllowAutoTopicCreation: true,
 		Balancer:               &kafka.Hash{},
-		Logger:                 config.Logger,
+		Logger:                 logger,
+		ErrorLogger:            logger,
 	}
 
 	return &KafkaProducer{
-		KafkaConfig: config, writer: w,
+		Timeout: timeout, writer: w,
 	}
 }
 
-func NewConsumer(ctx context.Context, broker, port, topic string, maxB, part int, dur time.Duration,
-	logger kafka.Logger) *KafkaConsumer {
-	config := KafkaConfig{
-		Broker: broker, Port: port, Topic: topic, Partition: part, MaxBytes: maxB, Timeout: dur,
-		Logger: logger,
-	}
+func NewConsumer(ctx context.Context, broker, port, topic, groupID string, maxB int, logger kafka.Logger, timeout time.Duration) *KafkaConsumer {
 
 	readerConfig := &kafka.ReaderConfig{
-		Brokers:   []string{config.Broker},
-		Topic:     config.Topic,
-		Partition: config.Partition,
-		MaxBytes:  config.MaxBytes,
-		Logger:    config.Logger}
+		Brokers:     []string{broker + ":" + port},
+		Topic:       topic,
+		GroupID:     groupID,
+		MaxBytes:    maxB,
+		Logger:      logger,
+		ErrorLogger: logger}
 
 	r := kafka.NewReader(*readerConfig)
 
 	return &KafkaConsumer{
-		KafkaConfig: config, reader: r,
+		Timeout: timeout, reader: r,
 	}
 }
 
-// Satisfies io.Reader and Writer
-// First word in p will be the key, " " indicates no key value
+/*
+Write expects p[]byte to be in the form of a JSON with a
+Key and Value from Message Struct.
+*/
 func (k *KafkaProducer) Write(p []byte) (n int, err error) {
-	words := bytes.Fields(p)
-	if len(words) == 0 {
-		return 0, fmt.Errorf("no data in buffer to send")
-	}
-	key := words[0]
-	val := bytes.Join(words[1:], []byte(" "))
 
-	if bytes.Contains(key, []byte(" ")) {
-		key = nil
-	}
+	var msgData Message
+	err = json.Unmarshal(p, &msgData)
 
-	kafkaMessage := kafka.Message{Key: key, Value: val}
 	ctx, cancel := context.WithTimeout(context.Background(), k.Timeout)
 	defer cancel()
-	if err = k.writer.WriteMessages(ctx, kafkaMessage); err != nil {
+	if err := k.writer.WriteMessages(ctx, kafka.Message{
+		Key:   []byte(msgData.Key),
+		Value: []byte(msgData.Value),
+	}); err != nil {
 		return 0, err
 	}
+	n = len(msgData.Key) + len(msgData.Value)
 
 	return n, nil
 
 }
 
+/*
+Read will output a JSON to P in the form of Message Struct
+*/
 func (k *KafkaConsumer) Read(p []byte) (n int, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), k.Timeout)
 	defer cancel()
-
-	m, err := k.reader.ReadMessage(ctx)
+	m, err := k.reader.FetchMessage(ctx)
+	if ctx.Err() != nil {
+		// No data to be read after context timeout (ensure timeout is long enough to read data).
+		return 0, io.EOF
+	}
 	if err != nil {
-		return
+		return 0, err
 	}
 
-	maxCopy := len(p)
-	n = copy(p, m.Key)
-	if n >= maxCopy {
-		return n, err
+	// Create an instance of MessageData and populate it with message fields
+	msgData := Message{
+		Topic:     m.Topic,
+		Key:       string(m.Key),
+		Value:     string(m.Value),
+		Timestamp: m.Time,
 	}
-	n += copy(p[n:], m.Value)
 
-	return n, err
+	// Marshal the MessageData into JSON format
+	jsonData, err := json.Marshal(msgData)
+	if err != nil {
+		return 0, err
+	}
+
+	// Copy the JSON data into the provided byte slice
+	n = copy(p, jsonData)
+	if n < len(jsonData) {
+		// Not enough space in the byte slice to copy the entire JSON data
+		return n, fmt.Errorf("insufficient buffer size")
+	}
+
+	return n, nil
+}
+
+func (k *KafkaConsumer) Close() error {
+	return k.reader.Close()
 }

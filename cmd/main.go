@@ -4,7 +4,8 @@ import (
 	"context"
 	"log"
 	"os"
-	"strconv"
+	"os/signal"
+	"syscall"
 	"time"
 
 	blueirismqtt "github.com/owen97779/Pachamama-MQTT-Kafka-Producer/internal/blueiris-mqtt"
@@ -16,63 +17,51 @@ func main() {
 	myLogger := modifiedlogger.NewLogger(
 		log.New(os.Stdout, "[INFO]:\t", log.Ldate|log.Ltime),
 		log.New(os.Stdout, "[WARN]:\t", log.Ldate|log.Ltime),
-		log.New(os.Stderr, "[ERROR]:\t", log.Ldate|log.Ltime))
+		log.New(os.Stderr, "[ERR]:\t", log.Ldate|log.Ltime))
 
 	mqttBroker := os.Getenv("MQTT-BROKER")
 	mqttPort := os.Getenv("MQTT-PORT")
 	mqttTopic := os.Getenv("MQTT-TOPIC")
 	mqttClientID := os.Getenv("MQTT-CLIENTID")
 	mqttMonitorTimeout := 10 * time.Second
-	mqttMessageAlert := make(chan struct{})
+	mqttChan := make(chan struct{})
 
 	kafkaBroker := os.Getenv("KAFKA-BROKER")
 	kafkaPort := os.Getenv("KAFKA-PORT")
 	KafkaTopic := os.Getenv("KAFKA-TOPIC")
 	kafkaTimeout := 10 * time.Second
-	kafkaPartition, err := strconv.Atoi(os.Getenv("KAFKA-PARTITION"))
-	if err != nil {
-		myLogger.Error(err)
-		os.Exit(1)
-	}
-	kafkaMaxBytes, err := strconv.Atoi(os.Getenv("KAFKA-MAXBYTES"))
-	if err != nil {
-		myLogger.Error(err)
-		os.Exit(1)
-	}
 
 	blueIrisMQTTConn := blueirismqtt.NewInstance(context.Background(), mqttBroker, mqttPort, mqttTopic,
-		mqttClientID, mqttMonitorTimeout, mqttMessageAlert, myLogger)
+		mqttClientID, mqttMonitorTimeout, myLogger, mqttChan)
 
-	kafkaLoginProducer := kafka.NewProducer(context.Background(), kafkaBroker, kafkaPort, KafkaTopic,
-		kafkaMaxBytes, kafkaPartition, kafkaTimeout, myLogger)
+	kafkaLoginProducer := kafka.NewProducer(context.Background(), kafkaBroker, kafkaPort, KafkaTopic, myLogger, kafkaTimeout)
 
 	if err := blueIrisMQTTConn.Connect(context.Background(), myLogger); err != nil {
 		myLogger.Error(err)
 		os.Exit(1)
 	}
 
-	/* To do:
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
 
-	1. 	To handle lost Kafka connections, enqueue failed write messages along with a timestamp
-		from blueIrisMQTTConn to prevent data loss.
-		After reconnecting to Kafka, dequeue all enqueued messages to ensure delivery.
-
-	2.	Handle shutdown events.
-
-	*/
+	buf := make([]byte, 100)
 
 	for {
 		select {
-		case <-mqttMessageAlert:
-			buf := make([]byte, 50)
+		case <-mqttChan:
 			n, err := blueIrisMQTTConn.Read(buf)
 			if err != nil {
 				myLogger.Error("MQTT:", err)
+				continue
 			}
 			_, err = kafkaLoginProducer.Write(buf[:n])
 			if err != nil {
+				/* Todo: Enqueue the buf to BQ in BlueIrisConn */
 				myLogger.Error("KAFKA:", err)
 			}
+		case <-signalChan:
+			/* Todo: Kafka event logging for future */
+			os.Exit(0)
 		}
 	}
 

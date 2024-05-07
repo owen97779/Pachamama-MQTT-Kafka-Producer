@@ -1,13 +1,17 @@
 package blueirismqtt
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"sync"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	modifiedlogger "github.com/owen97779/Pachamama-MQTT-Kafka-Producer/internal/logger"
+	"github.com/owen97779/Pachamama-MQTT-Kafka-Producer/pkg/kafka"
 )
 
 type MQTTClient struct {
@@ -18,7 +22,7 @@ type MQTTClient struct {
 	MonitorTimeout time.Duration
 	Setup          *mqtt.ClientOptions
 	Connection     mqtt.Client
-	messageAlertCh chan struct{}
+	Channel        chan struct{}
 	bq             ByteQueue
 }
 
@@ -60,7 +64,7 @@ func (bq *ByteQueue) Len() int {
 }
 
 func NewInstance(ctx context.Context, broker, port, topic, client string,
-	timeout time.Duration, ch chan struct{}, log *modifiedlogger.MyLogger) *MQTTClient {
+	timeout time.Duration, log *modifiedlogger.MyLogger, ch chan struct{}) *MQTTClient {
 	setup := mqtt.NewClientOptions()
 	setup.AddBroker(fmt.Sprintf("tcp://%s:%s", broker, port))
 	setup.SetClientID(client)
@@ -89,7 +93,7 @@ func NewInstance(ctx context.Context, broker, port, topic, client string,
 	setup.SetKeepAlive(timeout)
 
 	return &MQTTClient{Broker: broker, Port: port, Topic: topic, ClientID: client,
-		Setup: setup, Connection: nil, messageAlertCh: ch}
+		Setup: setup, Connection: nil, Channel: ch}
 }
 
 func (m *MQTTClient) Connect(ctx context.Context, log *modifiedlogger.MyLogger) error {
@@ -100,7 +104,7 @@ func (m *MQTTClient) Connect(ctx context.Context, log *modifiedlogger.MyLogger) 
 
 	subCallback := func(client mqtt.Client, message mqtt.Message) {
 		m.bq.Enqueue(message.Payload())
-		m.messageAlertCh <- struct{}{}
+		m.Channel <- struct{}{}
 		log.Info(fmt.Sprintf("MQTT: New Message: %s", message.Payload()))
 	}
 	token := m.Connection.Subscribe(m.Topic, 1, subCallback)
@@ -117,15 +121,44 @@ func (m *MQTTClient) Disconnect(ctx context.Context, quiesce uint) {
 func (m *MQTTClient) Read(p []byte) (n int, err error) {
 	message := m.bq.Dequeue()
 	if message == nil {
-		err = fmt.Errorf("no message in the queue")
+		return 0, io.EOF
+	}
+
+	jsonBuff, err := m.KafkaMessageJSON(message)
+	if err != nil {
 		return 0, err
 	}
 
-	if len(p) < len(message) {
+	n = copy(p, jsonBuff)
+	if n < len(jsonBuff) {
 		err = fmt.Errorf("byte slice is too small to hold the message")
-		return 0, err
 	}
-	n = copy(p, message)
 
 	return n, err
+}
+
+func (m *MQTTClient) KafkaMessageJSON(rawMessage []byte) ([]byte, error) {
+	// Ensure rawMessage is not empty or whitespace
+	if len(bytes.TrimSpace(rawMessage)) == 0 {
+		return nil, fmt.Errorf("not a valid MQTT payload to send (empty)")
+	}
+
+	// Split rawMessage into key-value pairs
+	words := bytes.Fields(rawMessage)
+	if len(words) < 2 {
+		return nil, fmt.Errorf("not a valid MQTT payload to send (no key/value pair)")
+	}
+
+	// Construct Kafka message from key-value pairs
+	kafkaMessage := kafka.Message{
+		Key:   string(words[0]),
+		Value: string(bytes.Join(words[1:], []byte(" "))),
+	}
+
+	// Marshal Kafka message to JSON
+	jsonBuff, err := json.Marshal(kafkaMessage)
+	if err != nil {
+		return nil, err
+	}
+	return jsonBuff, nil
 }

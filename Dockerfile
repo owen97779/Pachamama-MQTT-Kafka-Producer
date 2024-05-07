@@ -2,7 +2,10 @@ FROM golang:1.22
 
 WORKDIR /go/src/app
 
-COPY . .
+# Copy only the required directories
+COPY ./cmd ./cmd
+COPY ./internal ./internal
+COPY ./pkg ./pkg
 
 RUN go mod download
 
@@ -16,6 +19,5 @@ ENV KAFKA-BROKER=
 ENV KAFKA-PORT=
 ENV KAFKA-TOPIC=
 ENV KAFKA-PARTITION=
-ENV KAFKA-MAXBYTES=
 
 CMD [ "./cmd/main" ]
