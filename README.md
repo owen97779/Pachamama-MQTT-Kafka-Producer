@@ -32,7 +32,7 @@ This microservice acts as a bridge between our BlueIris CCTV system and our even
     ```
 2. Create Docker image.
     ```
-    docker build -t "mqtt-kafka-producer-img"
+    docker build -t "mqtt-kafka-producer-img" .
     ```
 3. Create Docker container
     ```
