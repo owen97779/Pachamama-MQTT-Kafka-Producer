@@ -3,9 +3,7 @@ FROM golang:1.22
 WORKDIR /go/src/app
 
 # Copy only the required directories
-COPY ./cmd ./cmd
-COPY ./internal ./internal
-COPY ./pkg ./pkg
+COPY . .
 
 RUN go mod download
 
@@ -18,6 +16,5 @@ ENV MQTT-CLIENTID=
 ENV KAFKA-BROKER=
 ENV KAFKA-PORT=
 ENV KAFKA-TOPIC=
-ENV KAFKA-PARTITION=
 
 CMD [ "./cmd/main" ]
