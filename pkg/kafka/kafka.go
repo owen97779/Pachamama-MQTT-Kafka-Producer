@@ -28,10 +28,14 @@ type Message struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
+type KafkaLoggerWrapper interface {
+	kafka.Logger
+}
+
 /*
 Context should have a timeout which will signal the time to read or write a message
 */
-func NewProducer(ctx context.Context, broker, port, topic string, logger kafka.Logger, timeout time.Duration) *KafkaProducer {
+func NewProducer(ctx context.Context, broker, port, topic string, logger KafkaLoggerWrapper, timeout time.Duration) *KafkaProducer {
 	w := &kafka.Writer{
 		Addr:                   kafka.TCP(broker + ":" + port),
 		Topic:                  topic,
@@ -46,7 +50,7 @@ func NewProducer(ctx context.Context, broker, port, topic string, logger kafka.L
 	}
 }
 
-func NewConsumer(ctx context.Context, broker, port, topic, groupID string, maxB int, logger kafka.Logger, timeout time.Duration) *KafkaConsumer {
+func NewConsumer(ctx context.Context, broker, port, topic, groupID string, maxB int, logger KafkaLoggerWrapper, timeout time.Duration) *KafkaConsumer {
 
 	readerConfig := &kafka.ReaderConfig{
 		Brokers:     []string{broker + ":" + port},
