@@ -61,6 +61,7 @@ func main() {
 			}
 		case <-signalChan:
 			/* Todo: Kafka event logging for future */
+			myLogger.Warn("Shutdown event received!")
 			os.Exit(0)
 		}
 	}
