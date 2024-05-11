@@ -8,6 +8,7 @@ import (
 	"io"
 	"time"
 
+	"github.com/owen97779/Pachamama-MQTT-Kafka-Producer/pkg/logger"
 	"github.com/segmentio/kafka-go"
 )
 
@@ -28,14 +29,10 @@ type Message struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
-type KafkaLoggerWrapper interface {
-	kafka.Logger
-}
-
 /*
 Context should have a timeout which will signal the time to read or write a message
 */
-func NewProducer(ctx context.Context, broker, port, topic string, logger KafkaLoggerWrapper, timeout time.Duration) *KafkaProducer {
+func NewProducer(broker, port, topic string, logger *logger.AggregatedLogger, timeout time.Duration) *KafkaProducer {
 	w := &kafka.Writer{
 		Addr:                   kafka.TCP(broker + ":" + port),
 		Topic:                  topic,
@@ -50,7 +47,7 @@ func NewProducer(ctx context.Context, broker, port, topic string, logger KafkaLo
 	}
 }
 
-func NewConsumer(ctx context.Context, broker, port, topic, groupID string, maxB int, logger KafkaLoggerWrapper, timeout time.Duration) *KafkaConsumer {
+func NewConsumer(broker, port, topic, groupID string, maxB int, logger *logger.AggregatedLogger, timeout time.Duration) *KafkaConsumer {
 
 	readerConfig := &kafka.ReaderConfig{
 		Brokers:     []string{broker + ":" + port},

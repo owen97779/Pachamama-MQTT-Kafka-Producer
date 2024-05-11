@@ -2,7 +2,6 @@ package blueirismqtt
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,8 +9,8 @@ import (
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
-	modifiedlogger "github.com/owen97779/Pachamama-MQTT-Kafka-Producer/internal/logger"
 	"github.com/owen97779/Pachamama-MQTT-Kafka-Producer/pkg/kafka"
+	"github.com/owen97779/Pachamama-MQTT-Kafka-Producer/pkg/logger"
 )
 
 type MQTTClient struct {
@@ -22,6 +21,7 @@ type MQTTClient struct {
 	MonitorTimeout time.Duration
 	Setup          *mqtt.ClientOptions
 	Connection     mqtt.Client
+	logger         *logger.AggregatedLogger
 	Channel        chan struct{}
 	bq             ByteQueue
 }
@@ -63,8 +63,8 @@ func (bq *ByteQueue) Len() int {
 	return len(bq.messages)
 }
 
-func NewInstance(ctx context.Context, broker, port, topic, client string,
-	timeout time.Duration, log *modifiedlogger.MyLogger, ch chan struct{}) *MQTTClient {
+func NewInstance(broker, port, topic, client string,
+	timeout time.Duration, log *logger.AggregatedLogger, ch chan struct{}) *MQTTClient {
 	setup := mqtt.NewClientOptions()
 	setup.AddBroker(fmt.Sprintf("tcp://%s:%s", broker, port))
 	setup.SetClientID(client)
@@ -93,10 +93,10 @@ func NewInstance(ctx context.Context, broker, port, topic, client string,
 	setup.SetKeepAlive(timeout)
 
 	return &MQTTClient{Broker: broker, Port: port, Topic: topic, ClientID: client,
-		Setup: setup, Connection: nil, Channel: ch}
+		Setup: setup, Connection: nil, Channel: ch, logger: log}
 }
 
-func (m *MQTTClient) Connect(ctx context.Context, log *modifiedlogger.MyLogger) error {
+func (m *MQTTClient) Connect() error {
 	m.Connection = mqtt.NewClient(m.Setup)
 	if token := m.Connection.Connect(); token.Wait() && token.Error() != nil {
 		return token.Error()
@@ -105,7 +105,7 @@ func (m *MQTTClient) Connect(ctx context.Context, log *modifiedlogger.MyLogger) 
 	subCallback := func(client mqtt.Client, message mqtt.Message) {
 		m.bq.Enqueue(message.Payload())
 		m.Channel <- struct{}{}
-		log.Info(fmt.Sprintf("MQTT: New Message: %s", message.Payload()))
+		m.logger.Info(fmt.Sprintf("MQTT: New Message: %s", message.Payload()))
 	}
 	token := m.Connection.Subscribe(m.Topic, 1, subCallback)
 	if token.Wait() && token.Error() != nil {
@@ -114,7 +114,7 @@ func (m *MQTTClient) Connect(ctx context.Context, log *modifiedlogger.MyLogger) 
 	return nil
 }
 
-func (m *MQTTClient) Disconnect(ctx context.Context, quiesce uint) {
+func (m *MQTTClient) Disconnect(quiesce uint) {
 	m.Connection.Disconnect(quiesce)
 }
 
@@ -151,8 +151,9 @@ func (m *MQTTClient) KafkaMessageJSON(rawMessage []byte) ([]byte, error) {
 
 	// Construct Kafka message from key-value pairs
 	kafkaMessage := kafka.Message{
-		Key:   string(words[0]),
-		Value: string(bytes.Join(words[1:], []byte(" "))),
+		Key:       string(words[0]),
+		Value:     string(bytes.Join(words[1:], []byte(" "))),
+		Timestamp: time.Now(),
 	}
 
 	// Marshal Kafka message to JSON

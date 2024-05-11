@@ -27,3 +27,9 @@ func (l *AggregatedLogger) Warn(v ...interface{}) {
 func (l *AggregatedLogger) Error(v ...interface{}) {
 	l.ErrorLogger.Println(v...)
 }
+
+// myLogger is now a kafka logger interface with this method
+func (l *AggregatedLogger) Printf(s string, v ...interface{}) {
+	s = "KAFKA: " + s
+	l.InfoLogger.Printf(s, v...)
+}
