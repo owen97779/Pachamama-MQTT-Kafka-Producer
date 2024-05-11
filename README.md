@@ -16,28 +16,34 @@ This microservice acts as a bridge between our BlueIris CCTV system and our even
 
 ### Build from source
 1. Clone repository
-2. Export environment variables, they can be found in Dockerfile.
+2. Export environment variables, they can be found in [docker-compose](/deploy/docker-compose.yml)
 3. Create executable in /cmd/main.go
 
-### Dockerfile
-1. Fill the environment variables in Dockerfile.
+### Docker Compose
+1. Fill the environment variables in [docker-compose](/deploy/docker-compose.yml).
 
     ```
-    RUN go build -o ./cmd/main ./cmd/main.go
-    
-    ENV MQTT-BROKER=...
-    ENV MQTT-PORT=...
-    ENV MQTT-TOPIC=...
-    ...
+    version: '3.8'
+
+    services:
+    kafka-producer:
+        image: owen97779/pachamama-mqtt-kafka-producer
+        container_name: "pachamama-mqtt-kafka-producer"
+        environment:
+        - MQTT-BROKER=localhost
+        - MQTT-PORT=1883
+        - MQTT-TOPIC=BlueIris/logins
+        - MQTT-CLIENTID=Pachamama-MQTT-Kafka-Producer
+        - KAFKA-BROKER=kafka0
+        - KAFKA-PORT=9092
+        - KAFKA-TOPIC=BlueIris-logins
+        - KAFKA-PRETTY-TOPIC=BlueIris-logins-Pretty
     ```
-2. Create Docker image.
+2. Deploy container.
     ```
-    docker build -t "mqtt-kafka-producer-img" .
+    docker-compose up -d
     ```
-3. Create Docker container
-    ```
-    docker run -d --name "mqtt-kafka-producer" "mqtt-kafka-producer-img"
-    ```
+
 ## Dependencies
 
 - https://github.com/eclipse/paho.mqtt.golang

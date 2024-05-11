@@ -19,17 +19,17 @@ func main() {
 		log.New(os.Stdout, "[WARN]:\t", log.Ldate|log.Ltime),
 		log.New(os.Stderr, "[ERR]:\t", log.Ldate|log.Ltime))
 
-	mqttBroker := "192.168.100.7"
-	mqttPort := "1883"
-	mqttTopic := "BlueIris/logins"
-	mqttClientID := "test"
+	mqttBroker := os.Getenv("MQTT-BROKER")
+	mqttPort := os.Getenv("MQTT-PORT")
+	mqttTopic := os.Getenv("MQTT-TOPIC")
+	mqttClientID := os.Getenv("MQTT-CLIENTID")
 	mqttMonitorTimeout := 10 * time.Second
-	mqttChan := make(chan struct{})
+	mqttChan := make(chan struct{}, 2)
 
-	kafkaBroker := "192.168.100.7"
-	kafkaPort := "29093"
-	KafkaTopic := "BlueIris-logins"
-	kafkaPrettyTopic := "BlueIris-logins-Pretty"
+	kafkaBroker := os.Getenv("KAFKA-BROKER")
+	kafkaPort := os.Getenv("KAFKA-PORT")
+	KafkaTopic := os.Getenv("KAFKA-TOPIC")
+	kafkaPrettyTopic := os.Getenv("KAFKA-PRETTY-TOPIC")
 	kafkaTimeout := 10 * time.Second
 
 	blueIrisMQTTConn := blueirismqtt.NewInstance(mqttBroker, mqttPort, mqttTopic,
